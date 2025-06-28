@@ -1,0 +1,58 @@
+import numpy as np
+import pandas as pd
+import datetime as dt
+from statsmodels.formula.api import ols
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+
+#Get my dataset
+df = pd.read_csv('C:/Users/HP ZORRO/Desktop/Data sets/kc_house_data/kc_house_data.csv')
+#Dispaly all variables
+pd.set_option('display.max_columns', None)
+#Create a function that will calculate the distance between the construction and Downtown(47.6062,122.3321)
+def haversine(lat1, lon1):
+            R = 6371  # Earth Radius
+            # Conversion to radians
+            phi1, phi2 = np.radians(lat1), np.radians(47.6062)
+            delta_phi = np.radians(47.6062 - lat1)
+            delta_lambda = np.radians(122.3321 - lon1)
+            # Haversine formula
+            a = np.sin(delta_phi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(delta_lambda / 2) ** 2
+            c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+            return R * c
+#create a new varibale 'dt_distance' to calculate the distance between the construction location and Downtown
+df['dt_distance'] = haversine(df['lat'], df['long'])
+log_distance = np.log(df['dt_distance'])
+#Extract the selling date
+df['date'] = pd.to_datetime(df['date'].astype(str).str[:8])
+#Extract only the year
+df['yr_selling'] = df['date'].dt.year
+#Convert bathrooms to 0.5, add it to the number of badrooms and stock the sum in new variable
+df['rooms'] = df['bedrooms'] +(df['bathrooms']*0.5)
+#If the construction is renovated means that we should to take the year on renvation not built, I'll then extract the max of both Buit and Renovated
+df['yr_updated'] = np.where(df['yr_renovated'] > 0, df['yr_renovated'], df['yr_built'])
+#Calculate the contruction age
+df['Age'] = df['yr_selling'] - df['yr_updated']
+#Age column contains a value of -1, illogic, because the year of nuilt should be less than year of selling
+df['Age'].describe()
+#I'll drop all lines that contain Age = -1
+df = df[df['Age'] != -1]
+#df[['bedrooms','floors','grade','condition','view','waterfront']].describe()
+df_subset = df[['bedrooms','floors','grade','condition','view','waterfront','Age','price','sqft_living15','sqft_lot15','dt_distance']]
+correlation = df_subset.corr()
+#sns.heatmap(correlation, annot=True, fmt=".2f")
+log_price = np.log(df_subset['price'])
+formula = 'log_price ~ bedrooms + view + dt_distance + Age * floors + grade * sqft_living15'
+OLS = ols(formula=formula, data=df_subset.assign(log_price=np.log(df_subset['price'])))
+model = OLS.fit()
+print(model.summary())
+residuals = model.resid
+fitted_values = model.fittedvalues
+plt.scatter(fitted_values, residuals) # No linearity between the fitted_values ans residuals
+sns.regplot(x=fitted_values, y=df_subset['price'], line_kws={'color':'red'}) #Regression line is shown as good as i estimated
+plt.hist(residuals) #The output shows clearly how resduals normally distrubated
+sm.qqplot(residuals, line="45")
+plt.show()
+
+#Add principal script
