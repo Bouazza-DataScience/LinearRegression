@@ -1,0 +1,80 @@
+import numpy as np
+import pandas as pd
+import datetime as dt
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
+import seaborn as sns
+
+#Get my dataset
+df = pd.read_csv('C:/Users/HP ZORRO/Desktop/Data sets/kc_house_data/kc_house_data.csv')
+#Dispaly all variables
+pd.set_option('display.max_columns', None)
+#Create a function that will calculate the distance between the construction and Downtown(47.6062,122.3321)
+def haversine(lat1, lon1):
+            R = 6371  # Earth Radius
+            # Conversion to radians
+            phi1, phi2 = np.radians(lat1), np.radians(47.6062)
+            delta_phi = np.radians(47.6062 - lat1)
+            delta_lambda = np.radians(122.3321 - lon1)
+            # Haversine formula
+            a = np.sin(delta_phi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(delta_lambda / 2) ** 2
+            c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+            return R * c
+#create a new varibale 'dt_distance' to calculate the distance between the construction location and Downtown
+df['dt_distance'] = haversine(df['lat'], df['long'])
+#Extract the date selling
+df['date'] = pd.to_datetime(df['date'].astype(str).str[:8])
+#Extract only the year
+df['yr_selling'] = df['date'].dt.year
+#Convert bathrooms to 0.5, add it to the number of badrooms and stock the sum in new variable
+df['rooms'] = df['bedrooms'] +(df['bathrooms']*0.5)
+#If the construction is renovated means that we should to take the year on renvation not built, I'll then extract the max of both Buit and Renovated
+df['yr_updated'] = np.where(df['yr_renovated'] > 0, df['yr_renovated'], df['yr_built'])
+#Calculate the contruction age
+df['Age'] = df['yr_selling'] - df['yr_updated']
+#Age column contains a value of -1, illogic, because the year of nuilt should be less than year of selling
+df['Age'].describe()
+#I'll drop all lines that contain Age = -1
+df = df[df['Age'] != -1]
+#Create a data subset 
+df_subset = df[['rooms','floors','grade','condition','view','waterfront','Age','price','sqft_living15','dt_distance']]
+#df_subset['floors'].describe()
+#Create a heatmap plot to see potentiel linearity between price and other variables
+corr = df_subset.corr()
+#sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f") #Wa can see that a correlation between price and grade is 0.67 and 0.59 with sqft_living15, but there is a strong correlation between grade and sqft_living15 of 0.71
+df_subset1 = df_subset.copy()
+df_subset1['grade_sqft_living'] = df_subset1['grade'] * df_subset1['sqft_living15']
+df_subset1['Age_floors'] = df_subset['Age'] * df_subset['floors']
+df_subset1['log_price'] = np.log(df_subset1['price'])
+corr = df_subset1.corr()
+##Built my LinearRegression Model
+#Create the X and y variables for the regression
+X = df_subset1[['grade_sqft_living','Age_floors','rooms','view','dt_distance']]
+y = df_subset1[['log_price']]
+#train and test split taking 25% for data to test and 75% to train the model
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+#scale my variables
+scale_X = StandardScaler()
+scale_y = StandardScaler()
+X_train_scaled = scale_X.fit_transform(X_train)
+X_test_scaled = scale_X.transform(X_test)
+y_train_scaled = scale_y.fit_transform(y_train.values.reshape(-1,1))
+y_test_scaled = scale_y.transform(y_test.values.reshape(-1,1))
+#create the model
+model = LinearRegression()
+fitted_model = model.fit(X_train_scaled, y_train_scaled)
+y_pred_scaled = fitted_model.predict(X_test_scaled)
+#create a function to calculate different Linear regression metrics
+def metric_scores(a ,b):
+    MSE = mean_squared_error(a, b)
+    RMSE = np.sqrt(MSE)
+    R2_score = r2_score(a, b)
+    print(f" MSE : {MSE:.2f}\n",f"RMSE : {RMSE:.2f}\n",f"R² : {R2_score:.2f}")
+#Display the Linear Regression metrics
+y_pred = scale_y.inverse_transform(y_pred_scaled)
+y_test_true = scale_y.inverse_transform(y_test_scaled)
+metric_scores(y_test_true, y_pred)
+
+#Add principal script
