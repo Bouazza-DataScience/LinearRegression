@@ -1,0 +1,75 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import datetime as dt
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score, mean_squared_error
+
+#charger mon dataframe
+df = pd.read_csv('C:/Users/HP ZORRO/Desktop/Data sets/ValeursFoncieres-2024.txt', sep='|', 
+                 encoding='utf-8',
+                 low_memory=False)
+#afficher toutes les colonnes de mon dataframe
+pd.set_option('display.max_columns', None)
+#Extraire seulement les colonnes qui m'intéressent
+df_subset = df[['Valeur fonciere','Code postal','Surface reelle bati','Type local','Date mutation']]
+#Analyse des valeurs manquantes
+df_subset.isna().sum()
+#Suppression des lignes des valeurs manquantes
+df1 = df_subset.dropna()
+#Vérifier mon nouveau dataframe
+df1.isna().sum()
+#Prendre juste les données de Paris et faire une copie sécurisée
+df2 = df1[(df1['Code postal'] >= 75001) & (df1['Code postal'] <= 75020)].copy()
+#Transformer la variable date mutation en datetime
+df2['Date mutation'] = pd.to_datetime(df2['Date mutation'], format='mixed')
+#Vérfier df2.info(), déjà exécuté, je ne veux pas remplir la console
+#Analyser toutes les variables df2.describe() aussi, déjà fait juste je ne veux pas remplir la console
+#Analyser la variable Type local, variable cathégorielle
+df2['Type local'].value_counts()
+#Normaliser la variable Valeur foncière
+df2['Valeur fonciere'] = df2['Valeur fonciere'].str.replace(',','.', regex=False)
+df2['Valeur fonciere'] = df2['Valeur fonciere'].astype(float)
+df2['log_valeur_fonciere'] = np.log(df2['Valeur fonciere'])
+#Transformer la variable Type local en dummies
+df2 = pd.get_dummies(df2, columns=['Type local'], drop_first=True)
+#Identify variables to buid the model
+X = df2[['Code postal'] + [col for col in df2.columns if col.startswith('Type local_')]]
+y = df2['log_valeur_fonciere']
+#Split data to train and test with 0.25 of data for test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+##Create the Linear Regression model
+ols = LinearRegression()
+model = ols.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+def lr_metrics(a, b):
+    mse = mean_squared_error(a, b)
+    rmse = np.sqrt(mse)
+    R2_score = r2_score(a, b)
+    print(f" mse = {mse:.2f}\n",
+          f"rmse = {rmse:.2f}\n",
+          f"R2_score = {R2_score:.2f}")
+#afficher les metrics du model
+lr_metrics(y_test, y_pred)
+#afficher les coeficients du model
+coef_df = pd.DataFrame({'Feature': X.columns, 'Coefficient': model.coef_})
+print(coef_df)
+#Analyse de la prédiction vs la réalité
+plt.figure(figsize=(8,6))
+sns.scatterplot(x=y_test, y=y_pred, alpha=0.5)
+plt.xlabel('Valeurs réelles (log)')
+plt.ylabel('Valeurs prédites (log)')
+plt.title('Valeurs réelles vs. Valeurs prédites')
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='red', linestyle='--')
+plt.show()
+#Analyse des résidus
+residuals = y_test - y_pred
+plt.figure(figsize=(8,6))
+sns.histplot(residuals, kde=True)
+plt.title('Distribution des résidus')
+plt.xlabel('Résidu (Valeur réelle - Valeur prédite)')
+plt.show()
+
+#Add script
